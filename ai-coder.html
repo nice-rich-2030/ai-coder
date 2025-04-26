@@ -1,4 +1,8 @@
-```html
+<!--
+Copyright (c) 2025 Daily Growth
+https://yourworklifedesign.blogspot.com/
+All rights reserved.
+-->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -672,7 +676,7 @@
             if (typeof CONFIG !== 'undefined' && CONFIG.API_KEY) {
                 document.getElementById('api-key').value = CONFIG.API_KEY;
             }
-            
+
             // 現在のソースコードエディタの初期化
             currentEditor = CodeMirror(document.getElementById('current-code'), {
                 mode: "javascript",
@@ -1085,63 +1089,144 @@ ${currentCode}
             });
         }
 
-        // 次の相違行に移動する関数
         function findNextDifference() {
-            if (diffLines.length === 0) {
-                alert('差分が見つかりませんでした。');
-                return;
-            }
+    if (diffLines.length === 0) {
+        alert('差分が見つかりませんでした。');
+        return;
+    }
 
-            // 以前にフォーカスされていたマークをクリア
-            currentDiffMarks.forEach(mark => mark.clear());
-            currentDiffMarks = [];
+    // 以前にフォーカスされていたマークをクリア
+    currentDiffMarks.forEach(mark => mark.clear());
+    currentDiffMarks = [];
 
-            // 次のインデックスを計算
-            currentDiffIndex = (currentDiffIndex + 1) % (diffLines.length + 1); // +1 は最初の行に戻るため
+    // 次のインデックスを計算
+    currentDiffIndex = (currentDiffIndex + 1) % (diffLines.length + 1); // +1 は最初の行に戻るため
 
-            if (currentDiffIndex === diffLines.length) {
-                // 最後の差分を過ぎたら最初の行に戻る
-                currentEditor.setCursor({ line: 0, ch: 0 });
-                currentEditor.scrollIntoView({ line: 0, ch: 0 }, 50); // パディングを調整
-                modifiedEditor.setCursor({ line: 0, ch: 0 });
-                modifiedEditor.scrollIntoView({ line: 0, ch: 0 }, 50); // パディングを調整
-                alert('最初の行に戻りました。');
-                currentDiffIndex = -1; // 次回押下時に最初の差分から始まるようにリセット
-                return;
-            }
+    if (currentDiffIndex === diffLines.length) {
+        // 最後の差分を過ぎたら最初の行に戻る
+        currentEditor.setCursor({ line: 0, ch: 0 });
+        currentEditor.scrollIntoView({ line: 0, ch: 0 }, 50); // パディングを調整
+        modifiedEditor.setCursor({ line: 0, ch: 0 });
+        modifiedEditor.scrollIntoView({ line: 0, ch: 0 }, 50); // パディングを調整
+        alert('最初の行に戻りました。');
+        currentDiffIndex = -1; // 次回押下時に最初の差分から始まるようにリセット
+        return;
+    }
 
-            const diff = diffLines[currentDiffIndex];
+    const diff = diffLines[currentDiffIndex];
+    
+    // 両方のエディタの対応する行の位置を特定
+    let lineA = -1;
+    let lineB = -1;
+    
+    if (diff.type === 'remove' || diff.type === 'replace') {
+        lineA = diff.lineA;
+    }
+    
+    if (diff.type === 'add' || diff.type === 'replace') {
+        lineB = diff.lineB;
+    }
+    
+    // 同期スクロールのための行計算
+    // 差分タイプに応じた行の対応関係を特定
+    if (diff.type === 'replace') {
+        // 置換の場合は両方の行が対応
+        synchronizeScroll(lineA, lineB);
+    } else if (diff.type === 'remove') {
+        // 削除の場合、右側のエディタには対応する行がないので、
+        // 前後の行やDiff情報から適切な対応行を見つける
+        const correspondingLineB = findCorrespondingLine(diff, 'remove');
+        synchronizeScroll(lineA, correspondingLineB);
+    } else if (diff.type === 'add') {
+        // 追加の場合、左側のエディタには対応する行がないので、
+        // 前後の行やDiff情報から適切な対応行を見つける
+        const correspondingLineA = findCorrespondingLine(diff, 'add');
+        synchronizeScroll(correspondingLineA, lineB);
+    }
+    
+    // 対応する行にカーソル移動し、current-diff-line クラスでマーク
+    if (lineA >= 0) {
+        currentEditor.setCursor({ line: lineA, ch: 0 });
+        const markA = currentEditor.markText(
+            { line: lineA, ch: 0 },
+            { line: lineA, ch: currentEditor.getLine(lineA).length },
+            { className: 'current-diff-line' }
+        );
+        currentDiffMarks.push(markA);
+    }
+    
+    if (lineB >= 0) {
+        modifiedEditor.setCursor({ line: lineB, ch: 0 });
+        const markB = modifiedEditor.markText(
+            { line: lineB, ch: 0 },
+            { line: lineB, ch: modifiedEditor.getLine(lineB).length },
+            { className: 'current-diff-line' }
+        );
+        currentDiffMarks.push(markB);
+    }
+}
 
-            // 対応する行にスクロール＆カーソル移動し、current-diff-line クラスでマーク
-            if (diff.type === 'remove' || diff.type === 'replace') {
-                const lineA = diff.lineA;
-                currentEditor.setCursor({ line: lineA, ch: 0 });
-                currentEditor.scrollIntoView({ line: lineA, ch: 0 }, 50); // パディングを調整
-                const markA = currentEditor.markText(
-                    { line: lineA, ch: 0 },
-                    { line: lineA, ch: currentEditor.getLine(lineA).length },
-                    { className: 'current-diff-line' }
-                );
-                currentDiffMarks.push(markA);
-            } else {
-                // 挿入行の場合は、現在のコードには対応する行がないため、現在のエディタはスクロールしない
-            }
-
-            if (diff.type === 'add' || diff.type === 'replace') {
-                const lineB = diff.lineB;
-                modifiedEditor.setCursor({ line: lineB, ch: 0 });
-                modifiedEditor.scrollIntoView({ line: lineB, ch: 0 }, 50); // パディングを調整
-                 const markB = modifiedEditor.markText(
-                    { line: lineB, ch: 0 },
-                    { line: lineB, ch: modifiedEditor.getLine(lineB).length },
-                    { className: 'current-diff-line' }
-                );
-                currentDiffMarks.push(markB);
-            } else {
-                 // 削除行の場合は、修正後のコードには対応する行がないため、修正後エディtaはスクロールしない
-            }
+// 両方のエディタを同期してスクロールする関数
+function synchronizeScroll(lineA, lineB) {
+    if (lineA >= 0) {
+        // 左側の行にフォーカスされた場合
+        currentEditor.scrollIntoView({ line: lineA, ch: 0 }, 100); // パディングを大きめに
+        
+        if (lineB >= 0) {
+            // 右側にも対応する行がある場合は、その行が同じ相対位置になるようにスクロール
+            const currentEditorInfo = currentEditor.getScrollInfo();
+            const currentLineTop = currentEditor.charCoords({ line: lineA, ch: 0 }, "local").top;
+            const currentScroll = currentEditorInfo.top;
+            const currentRelativePosition = currentLineTop - currentScroll;
+            
+            // 右側エディタも同じ相対位置になるようにスクロール
+            const targetLineTop = modifiedEditor.charCoords({ line: lineB, ch: 0 }, "local").top;
+            modifiedEditor.scrollTo(null, targetLineTop - currentRelativePosition);
         }
+    } else if (lineB >= 0) {
+        // 右側の行にフォーカスされた場合
+        modifiedEditor.scrollIntoView({ line: lineB, ch: 0 }, 100); // パディングを大きめに
+        
+        if (lineA >= 0) {
+            // 左側にも対応する行がある場合は、その行が同じ相対位置になるようにスクロール
+            const modifiedEditorInfo = modifiedEditor.getScrollInfo();
+            const modifiedLineTop = modifiedEditor.charCoords({ line: lineB, ch: 0 }, "local").top;
+            const modifiedScroll = modifiedEditorInfo.top;
+            const modifiedRelativePosition = modifiedLineTop - modifiedScroll;
+            
+            // 左側エディタも同じ相対位置になるようにスクロール
+            const targetLineTop = currentEditor.charCoords({ line: lineA, ch: 0 }, "local").top;
+            currentEditor.scrollTo(null, targetLineTop - modifiedRelativePosition);
+        }
+    }
+}
 
+// 対応する行を見つける関数（シンプルな実装）
+function findCorrespondingLine(diff, type) {
+    // シンプルな実装: 前または後の差分情報から対応する行を推測
+    // この関数はより高度な実装にすることができます
+    
+    if (type === 'remove') {
+        // 削除された行の右側の対応する行を見つける
+        // 簡単な実装: 現在の差分インデックスと前後の差分から推測
+        const prevDiffs = diffLines.slice(0, currentDiffIndex);
+        const addCount = prevDiffs.filter(d => d.type === 'add').length;
+        const removeCount = prevDiffs.filter(d => d.type === 'remove').length;
+        
+        // 削除行の前後の行に基づいて対応する行を計算
+        return Math.max(0, diff.lineA - removeCount + addCount);
+    } else if (type === 'add') {
+        // 追加された行の左側の対応する行を見つける
+        const prevDiffs = diffLines.slice(0, currentDiffIndex);
+        const addCount = prevDiffs.filter(d => d.type === 'add').length;
+        const removeCount = prevDiffs.filter(d => d.type === 'remove').length;
+        
+        // 追加行の前後の行に基づいて対応する行を計算
+        return Math.max(0, diff.lineB - addCount + removeCount);
+    }
+    
+    return 0; // デフォルト値
+}
 
         // 修正を適用する関数
         function applyModification() {
@@ -1641,4 +1726,3 @@ ${currentCode}
     </script>
 </body>
 </html>
-```
