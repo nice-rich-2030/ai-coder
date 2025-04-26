@@ -1,0 +1,1644 @@
+```html
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI連携コードエディター</title>
+    <!-- CodeMirrorライブラリを使用 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/theme/monokai.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/javascript/javascript.min.js"></script>
+    <!-- Diffライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch.js"></script>
+    <!-- 設定ファイルを読み込む -->
+    <script src="config.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: #f4f7f6; /* 柔らかい背景色 */
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .header {
+            background-color: #3a4750; /* ダークグレー系のヘッダー */
+            color: white;
+            padding: 12px 25px; /* パディングを調整 */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15); /* 強めのシャドウ */
+            flex-shrink: 0; /* 縮小しない */
+        }
+
+        .header h2 {
+            margin: 0;
+            font-size: 1.5em;
+            font-weight: 600;
+        }
+
+        .api-key-container {
+            display: flex;
+            align-items: center;
+            gap: 15px; /* 要素間のスペースを調整 */
+        }
+
+        .api-key-container label {
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        #backup-manager {
+            background-color: #546e7a; /* ヘッダーに合わせた色 */
+            border-radius: 50%;
+            width: 36px; /* サイズを少し大きく */
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+            font-size: 1.2em;
+            border: none; /* ボーダーをなくす */
+            color: white; /* アイコン色 */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        #backup-manager:hover {
+            background-color: #78909c; /* ホバー時の色 */
+        }
+
+        .backup-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 30px; /* パディングを調整 */
+            border-radius: 10px; /* 角を丸く */
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2); /* 強めのシャドウ */
+            z-index: 1000;
+            max-width: 90%; /* 最大幅を調整 */
+            max-height: 90%; /* 最大高さを調整 */
+            overflow: auto;
+            border: 1px solid #e0e0e0; /* 控えめなボーダー */
+        }
+
+        .backup-dialog h3 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #3a4750;
+            font-size: 1.3em;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .backup-dialog > div:first-of-type { /* エクスポート/インポートボタンのコンテナ */
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .backup-dialog h4 {
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #555;
+            font-size: 1.1em;
+        }
+
+        .backup-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .backup-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center; /* 垂直方向中央揃え */
+            padding: 12px 18px; /* パディングを調整 */
+            border: 1px solid #e1e4e8;
+            margin-bottom: 10px; /* マージンを調整 */
+            border-radius: 6px; /* 角を丸く */
+            background-color: #ffffff; /* 白背景 */
+            transition: background-color 0.2s ease-in-out;
+            font-size: 0.95em;
+        }
+
+        .backup-item:hover {
+            background-color: #f8f9fa; /* ホバー時の背景色 */
+        }
+
+        .backup-item span {
+            flex-grow: 1; /* 日付部分が広がるように */
+            margin-right: 10px; /* ボタンとの間にスペース */
+        }
+
+        .backup-item-buttons {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0; /* ボタンは縮小しない */
+        }
+
+        .backup-dialog button {
+             padding: 6px 10px; /* ボタンのパディング */
+             font-size: 0.9em;
+        }
+
+        .dialog-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6); /* 少し濃い背景 */
+            z-index: 999;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            height: calc(100vh - 60px); /* ヘッダーの高さを考慮 */
+            overflow: hidden;
+        }
+
+        .editors-container {
+            display: flex;
+            flex: 3; /* エディタエリアを広く */
+            border-bottom: 1px solid #dcdcdc; /* 控えめなボーダー */
+            min-height: 300px;
+        }
+
+        .editor-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #dcdcdc; /* 控えめなボーダー */
+            position: relative;
+            overflow: hidden;
+        }
+
+        .editor-section:last-child {
+            border-right: none;
+        }
+
+        .editor-header {
+            background-color: #eef1f3; /* 明るいヘッダー背景 */
+            padding: 10px 15px; /* パディングを調整 */
+            font-weight: 600;
+            border-bottom: 1px solid #dcdcdc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #495057;
+            font-size: 0.95em;
+            flex-shrink: 0; /* 縮小しない */
+        }
+
+        .editor-header div {
+             display: flex;
+             gap: 10px; /* ボタン間のスペース */
+             align-items: center;
+        }
+
+        .editor-content {
+            flex: 1;
+            overflow: hidden; /* CodeMirrorが内部でスクロールを管理 */
+            background-color: #272822; /* monokaiテーマの背景色 */
+        }
+
+        .prompt-container {
+            display: flex;
+            flex: 1; /* プロンプトエリアの比率 */
+            border-bottom: 1px solid #dcdcdc;
+            min-height: 150px;
+            max-height: 250px; /* 最大高さを少し増やす */
+            flex-shrink: 0; /* 縮小しない */
+        }
+
+        .prompt-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #dcdcdc;
+            overflow: hidden;
+        }
+
+        .prompt-section:last-child {
+            border-right: none;
+        }
+
+        .prompt-header {
+            background-color: #eef1f3; /* 明るいヘッダー背景 */
+            padding: 10px 15px; /* パディングを調整 */
+            font-weight: 600;
+            border-bottom: 1px solid #dcdcdc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #495057;
+            font-size: 0.95em;
+            flex-shrink: 0; /* 縮小しない */
+        }
+
+        .prompt-header .prompt-actions {
+             display: flex;
+             gap: 10px; /* 要素間のスペース */
+             align-items: center;
+        }
+
+        .prompt-content {
+            flex: 1;
+            padding: 0; /* textareaにパディングを持たせる */
+            overflow: hidden;
+        }
+
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1; /* チャットエリアの比率 */
+            border-top: 1px solid #dcdcdc;
+            overflow: hidden;
+            /* max-height: 200px; /* チャット履歴エリアの高さを調整 - 削除または調整 */
+            flex-shrink: 0; /* 縮小しない */
+        }
+
+        .chat-header {
+            background-color: #eef1f3; /* 明るいヘッダー背景 */
+            padding: 10px 15px; /* パディングを調整 */
+            font-weight: 600;
+            border-bottom: 1px solid #dcdcdc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #495057;
+            font-size: 0.95em;
+            flex-shrink: 0; /* 縮小しない */
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: #ffffff; /* 白背景 */
+            display: flex; /* メッセージをflexアイテムとして扱う */
+            flex-direction: column; /* 縦に並べる */
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            border-radius: 10px; /* 角を丸く */
+            padding: 15px; /* パディングを調整 */
+            max-width: 90%; /* 最大幅を調整 */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.08); /* 控えめなシャドウ */
+            line-height: 1.5;
+        }
+
+        .user-message {
+            background-color: #e0f7fa; /* ライトシアン */
+            color: #006064; /* ダークシアン */
+            align-self: flex-end; /* 右寄せ */
+            margin-left: auto;
+        }
+
+        .ai-message {
+            background-color: #e8f5e9; /* ライトグリーン */
+            color: #2e7d32; /* ダークグリーン */
+            align-self: flex-start; /* 左寄せ */
+        }
+
+        .message-header {
+            font-weight: bold;
+            margin-bottom: 8px; /* マージンを調整 */
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(0,0,0,0.08); /* 控えめなボーダー */
+            padding-bottom: 8px; /* パディングを調整 */
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        .user-message .message-header {
+             color: #004d40; /* ユーザーメッセージヘッダーの色 */
+        }
+
+        .ai-message .message-header {
+             color: #1b5e20; /* AIメッセージヘッダーの色 */
+        }
+
+
+        .message-content {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.5;
+            font-size: 0.95em;
+        }
+
+        .message-time {
+            font-size: 0.8em;
+            color: #777;
+        }
+
+        .message-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(0,0,0,0.08);
+        }
+
+        .reuse-prompt {
+            background-color: transparent;
+            color: #1a73e8; /* Google Blue */
+            border: none;
+            cursor: pointer;
+            padding: 5px 10px;
+            font-size: 0.9em;
+            border-radius: 4px;
+            transition: background-color 0.2s ease-in-out;
+            font-weight: 500;
+        }
+
+        .reuse-prompt:hover {
+            background-color: rgba(26,115,232,0.1); /* 薄いGoogle Blue */
+            text-decoration: none;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100%;
+            border: none;
+            resize: none;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            padding: 15px; /* パディングを調整 */
+            box-sizing: border-box;
+            font-size: 14px;
+            line-height: 1.6; /* 行間を調整 */
+            color: #333;
+            background-color: #fcfcfc; /* ほぼ白 */
+            outline: none; /* フォーカス時のアウトラインをデフォルトで消す */
+        }
+
+        textarea:focus {
+            background-color: #ffffff; /* フォーカス時は白 */
+        }
+
+        button {
+            padding: 8px 16px; /* パディングを調整 */
+            margin: 0;
+            background-color: #66bb6a; /* ライトグリーン */
+            color: white;
+            border: none;
+            border-radius: 5px; /* 角を丸く */
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        button:hover {
+            background-color: #4caf50; /* グリーン */
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+        }
+
+        button:active {
+             background-color: #388e3c; /* ダークグリーン */
+             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .button-primary {
+            background-color: #5c6bc0; /* インディゴ */
+        }
+
+        .button-primary:hover {
+            background-color: #3f51b5; /* ダークインディゴ */
+        }
+
+         .button-primary:active {
+             background-color: #303f9f; /* よりダークなインディゴ */
+         }
+
+        .button-danger {
+            background-color: #ef5350; /* ライトレッド */
+        }
+
+        .button-danger:hover {
+            background-color: #e53935; /* レッド */
+        }
+
+         .button-danger:active {
+             background-color: #c62828; /* ダークレッド */
+         }
+
+
+        select {
+            padding: 7px 12px; /* パディングを調整 */
+            border-radius: 5px; /* 角を丸く */
+            border: 1px solid #ced4da;
+            background-color: #fff;
+            color: #495057;
+            font-size: 14px;
+            transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #80bdff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        }
+
+        input {
+            padding: 7px 12px; /* パディングを調整 */
+            border-radius: 5px; /* 角を丸く */
+            border: 1px solid #ced4da;
+            background-color: #fff;
+            color: #495057;
+            font-size: 14px;
+            transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            outline: none; /* フォーカス時のアウトラインをデフォルトで消す */
+        }
+
+        input:focus {
+            border-color: #80bdff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        }
+
+        .CodeMirror {
+            height: 100%;
+            font-size: 14px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            line-height: 1.6; /* 行間を調整 */
+        }
+
+        /* CodeMirror monokai theme specific adjustments */
+        .CodeMirror-scroll {
+            overflow: auto !important; /* CodeMirrorのスクロールバーを有効にする */
+        }
+
+        /* 通常の差分行のハイライト */
+        .diff-line {
+            background-color: rgba(255, 255, 0, 0.3); /* 黄色系のハイライト */
+            color: inherit !important; /* テキスト色はテーマに合わせる */
+        }
+
+        /* 現在フォーカスされている差分行のハイライト */
+        .current-diff-line {
+            background-color: rgba(255, 165, 0, 0.5); /* オレンジ系のハイライト */
+            color: inherit !important;
+        }
+
+
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.9); /* 少し透明度を上げる */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            font-size: 1.2em; /* フォントサイズを調整 */
+            font-weight: bold;
+            color: #555; /* 色を調整 */
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 30px; /* サイズを調整 */
+            height: 30px;
+            border-radius: 50%;
+            border-left-color: #5c6bc0; /* スピナーの色をプライマリボタンに合わせる */
+            animation: spin 1s linear infinite;
+            margin-right: 15px; /* マージンを調整 */
+        }
+
+        /* 削除されたexecute-ai-containerのスタイル */
+        /* .execute-ai-container {
+            padding: 12px 25px;
+            text-align: right;
+            background-color: #eef1f3;
+            border-top: 1px solid #dcdcdc;
+            flex-shrink: 0;
+        } */
+
+        #execute-ai {
+            padding: 10px 20px; /* パディングを調整 */
+            font-size: 1em; /* フォントサイズを調整 */
+            font-weight: bold;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>AI連携コードエディター</h2>
+        <div class="api-key-container">
+            <label for="api-key">API Key:</label>
+            <input type="password" id="api-key" placeholder="Enter your API key" >
+            <select id="ai-model">
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                <option value="gpt-4">GPT-4</option>
+                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
+                <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                <option value="gemini-1.5-flash-latest" >Gemini 1.5 Flash</option>
+                <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro</option>
+                <option value="gemini-2.0-flash-thinking-exp-01-21" selected>gemini-2.0-flash-thinking-exp-01-21</option>
+            </select>
+            <button id="backup-manager" title="BACKUPファイル管理">💾</button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="editors-container">
+            <div class="editor-section">
+                <div class="editor-header">
+                    <span>現在のソースコード（現在SC）</span>
+                    <div>
+                         <button id="find-diff-button">相違行検索</button>
+                    </div>
+                </div>
+                <div class="editor-content" id="current-code"></div>
+            </div>
+            <div class="editor-section">
+                <div class="editor-header">
+                    <span>修正後SC</span>
+                    <div>
+                        <select id="version-select">
+                            <option value="">-- BACKUP選択 --</option>
+                        </select>
+                        <button id="apply-button" class="button-primary">現在SC→BACKUP ＆ 修正後SC→現在</button>
+                        <!-- 修正後ソースコード保存ボタンを追加 -->
+                        <button id="save-modified-button" class="button-primary">修正後SC→PC保存</button>
+                    </div>
+                </div>
+                <div class="editor-content" id="modified-code"></div>
+                <div id="loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <span>AIが処理中...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="prompt-container">
+            <div class="prompt-section">
+                <div class="prompt-header">
+                    <span>プロンプト入力</span>
+                    <div class="prompt-actions"> <!-- プロンプト履歴選択とAI実行ボタンをまとめる -->
+                        <select id="prompt-history-select">
+                            <option value="">-- 過去のプロンプト --</option>
+                        </select>
+                        <button id="execute-ai" class="button-primary">AI実行</button> <!-- AI実行ボタンをここに移動 -->
+                    </div>
+                </div>
+                <div class="prompt-content">
+                    <textarea id="prompt-input" placeholder="AIに指示するプロンプトを入力してください..."></textarea>
+                </div>
+            </div>
+            <div class="prompt-section">
+                <div class="prompt-header">文脈入力</div>
+                <div class="prompt-content">
+                    <textarea id="context-input" placeholder="AIにプロンプトの文脈として入力する情報を記載してください..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI実行ボタンのコンテナは削除 -->
+        <!-- <div class="execute-ai-container">
+            <button id="execute-ai" class="button-primary">AI実行</button>
+        </div> -->
+
+        <div class="chat-container">
+            <div class="chat-header">
+                <span>チャット履歴</span>
+                <button id="clear-chat" class="button-danger">履歴をクリア</button>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+                <!-- チャットメッセージがここに表示されます -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Generative AI インポートマップ -->
+    <script type="importmap">
+    {
+        "imports": {
+            "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+    }
+    </script>
+
+    <script type="module">
+        // Google Generative AI モジュールをインポート
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+
+        // エディタのインスタンスを保持する変数
+        let currentEditor, modifiedEditor;
+        // バックアップのバージョン履歴
+        let versions = [];
+        // 差分行のリストと現在のインデックス
+        let diffLines = [];
+        let currentDiffIndex = -1; // -1は初期状態、0から始まる
+        // 現在フォーカスされている差分行のCodeMirrorマークを保持する配列
+        let currentDiffMarks = [];
+
+
+        // DOMが読み込まれた後の処理
+        document.addEventListener('DOMContentLoaded', function() {
+            // 設定ファイルからAPIキーを読み込む
+            if (typeof CONFIG !== 'undefined' && CONFIG.API_KEY) {
+                document.getElementById('api-key').value = CONFIG.API_KEY;
+            }
+            
+            // 現在のソースコードエディタの初期化
+            currentEditor = CodeMirror(document.getElementById('current-code'), {
+                mode: "javascript",
+                theme: "monokai",
+                lineNumbers: true,
+                autofocus: true,
+                value: "// ここにコードを入力してください\nconsole.log('Hello, World!');"
+            });
+
+            // 修正後のソースコードエディタの初期化
+            modifiedEditor = CodeMirror(document.getElementById('modified-code'), {
+                mode: "javascript",
+                theme: "monokai",
+                lineNumbers: true,
+                readOnly: false,
+                value: ""
+            });
+
+            // エディタ変更検出用タイマー
+            let diffDetectionTimer = null;
+
+            // 現在のエディタの変更を監視
+            currentEditor.on('change', function() {
+                // 既存のタイマーをクリア
+                if (diffDetectionTimer) {
+                    clearTimeout(diffDetectionTimer);
+                }
+
+                // 3秒後に差分検出を実行するタイマーを設定
+                diffDetectionTimer = setTimeout(function() {
+                    if (modifiedEditor.getValue().length > 0) {
+                        highlightDifferences();
+                    }
+                }, 3000);
+            });
+
+            // 修正エディタの変更を監視
+            modifiedEditor.on('change', function() {
+                // 既存のタイマーをクリア
+                if (diffDetectionTimer) {
+                    clearTimeout(diffDetectionTimer);
+                }
+
+                // 3秒後に差分検出を実行するタイマーを設定
+                diffDetectionTimer = setTimeout(function() {
+                    if (modifiedEditor.getValue().length > 0) {
+                        highlightDifferences();
+                    }
+                }, 3000);
+            });
+
+            // イベントリスナーの設定
+            document.getElementById('execute-ai').addEventListener('click', executeAI);
+            document.getElementById('apply-button').addEventListener('click', applyModification);
+            document.getElementById('version-select').addEventListener('change', loadVersion);
+            document.getElementById('backup-manager').addEventListener('click', showBackupManager);
+            document.getElementById('clear-chat').addEventListener('click', clearChatHistory);
+            // 修正後ソースコード保存ボタンのイベントリスナーを追加
+            document.getElementById('save-modified-button').addEventListener('click', saveModifiedCode);
+            // 相違行検索ボタンのイベントリスナーを追加
+            document.getElementById('find-diff-button').addEventListener('click', findNextDifference);
+
+
+            // ローカルストレージからチャット履歴とバージョン履歴を読み込む
+            loadVersionsFromStorage();
+            loadChatHistory();
+        });
+
+        // AIを実行して修正コードを生成する関数
+        async function executeAI() {
+            const apiKey = document.getElementById('api-key').value;
+            const aiModel = document.getElementById('ai-model').value;
+            const prompt = document.getElementById('prompt-input').value;
+            const context = document.getElementById('context-input').value;
+            const currentCode = currentEditor.getValue();
+
+            if (!apiKey) {
+                alert('APIキーを入力してください');
+                return;
+            }
+
+            if (!prompt) {
+                alert('AIへのプロンプトを入力してください');
+                return;
+            }
+
+            // ローディング表示
+            document.getElementById('loading').style.display = 'flex';
+
+            try {
+                let modifiedCode, fullResponse;
+
+                if (aiModel.includes('gemini')) {
+					const generationConfig = {
+					  maxOutputTokens: 32768, // Gemini 1.5 Flash/Proは1Mトークンまで可能だが、安全のため少し制限
+					  temperature: 0.3,
+					  //topP: 0.1,
+					  //topK: 16,
+					};
+					// Gemini API の処理
+                    const genAI = new GoogleGenerativeAI(apiKey);
+                    const model = genAI.getGenerativeModel({ model: aiModel ,generationConfig});
+
+                    // プロンプトとコードを組み立て
+                    const promptText = `あなたはHTML(JavaScript)のコードを改善するAIアシスタントです。与えられたコードを指示に従って修正し、改善してください。コード全体のみを返して下さい。
+
+${context ? `コンテキスト情報: ${context}
+
+` : ''}次のコードを以下の指示に従って修正してください：
+
+${prompt}
+
+コード：
+\`\`\`
+${currentCode}
+\`\`\``;
+
+                    const result = await model.generateContent(promptText);
+                    const response = await result.response;
+                    fullResponse = response.text();
+                    modifiedCode = fullResponse;
+
+                } else if (aiModel.includes('gpt')) {
+                    // OpenAI API
+                    const apiEndpoint = 'https://api.openai.com/v1/chat/completions';
+
+                    // AIリクエストの作成
+                    const messages = [
+                        {
+                            role: "system",
+                            content: "あなたはJavaScriptコードを改善するAIアシスタントです。与えられたコードを指示に従って修正し、改善してください。修正したコードのみを返してください。"
+                        }
+                    ];
+
+                    // コンテキストが入力されていれば追加
+                    if (context) {
+                        messages.push({
+                            role: "user",
+                            content: `コンテキスト情報: ${context}`
+                        });
+                    }
+
+                    // プロンプトとコードを追加
+                    messages.push({
+                        role: "user",
+                        content: `次のJavaScriptコードを以下の指示に従って修正してください：\n\n${prompt}\n\nコード：\n\`\`\`javascript\n${currentCode}\n\`\`\``
+                    });
+
+                    const requestBody = {
+                        model: aiModel,
+                        messages: messages,
+                        temperature: 0.3,
+                        max_tokens: 4000 // GPT-3.5/4の一般的な制限
+
+                    };
+
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    };
+
+                    // APIリクエストの送信
+                    const response = await fetch(apiEndpoint, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    const data = await response.json();
+                    if (data.choices && data.choices[0] && data.choices[0].message) {
+                         fullResponse = data.choices[0].message.content;
+                         modifiedCode = fullResponse;
+                    } else {
+                         throw new Error('OpenAI APIからの応答が不正です。');
+                    }
+
+
+                } else if (aiModel.includes('claude')) {
+                    // Anthropic API
+                    const apiEndpoint = 'https://api.anthropic.com/v1/messages';
+
+                    // AIリクエストの作成
+                    const messages = [
+                        {
+                            role: "user",
+                            content: `あなたはJavaScriptコードを改善するAIアシスタントです。与えられたコードを指示に従って修正し、改善してください。修正したコードのみを返してください。
+
+${context ? `コンテキスト情報: ${context}
+
+` : ''}次のJavaScriptコードを以下の指示に従って修正してください：
+
+${prompt}
+
+コード：
+\`\`\`javascript
+${currentCode}
+\`\`\``
+                        }
+                    ];
+
+                    const requestBody = {
+                        model: aiModel,
+                        messages: messages,
+                        max_tokens: 4000 // Claudeの一般的な制限
+                    };
+
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`,
+                        'anthropic-version': '2023-06-01'
+                    };
+
+                    // APIリクエストの送信
+                    const response = await fetch(apiEndpoint, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    const data = await response.json();
+                     if (data.content && data.content[0] && data.content[0].text) {
+                        fullResponse = data.content[0].text;
+                        modifiedCode = fullResponse;
+                    } else {
+                        throw new Error('Anthropic APIからの応答が不正です。');
+                    }
+                } else {
+                     throw new Error('選択されたAIモデルはサポートされていません。');
+                }
+
+
+
+
+                // 修正後のエディタに表示
+                modifiedEditor.setValue(modifiedCode);
+
+                // 差分をハイライト
+                highlightDifferences();
+
+                // チャット履歴に追加
+                addChatMessage({
+                    type: 'user',
+                    prompt: prompt,
+                    context: context,
+                    code: currentCode,
+                    timestamp: new Date().toISOString()
+                });
+
+                addChatMessage({
+                    type: 'ai',
+                    content: fullResponse, // 元のAI応答全体を保存
+                    modifiedCode: modifiedCode, // 抽出したコードも保存
+                    timestamp: new Date().toISOString()
+                });
+
+                // プロンプト履歴の更新
+                updatePromptHistorySelect();
+
+                // ローカルストレージにチャット履歴を保存
+                saveChatHistory();
+            } catch (error) {
+                console.error('AIリクエストエラー:', error);
+                alert('AIからのレスポンスでエラーが発生しました: ' + error.message);
+            } finally {
+                // ローディング非表示
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // 差分をハイライトする関数
+        function highlightDifferences() {
+            // 現在のコードと修正後のコードを行ごとに分割
+            const currentLines = currentEditor.getValue().split('\n');
+            const modifiedLines = modifiedEditor.getValue().split('\n');
+
+            // 両方のエディタが空でないことを確認
+            if (currentLines.length === 0 || modifiedLines.length === 0 ||
+                (currentLines.length === 1 && currentLines[0] === '' && modifiedLines.length === 1 && modifiedLines[0] === '')) {
+                // 差分がない場合はマークをクリアして終了
+                currentEditor.getAllMarks().forEach(mark => mark.clear());
+                modifiedEditor.getAllMarks().forEach(mark => mark.clear());
+                currentDiffMarks.forEach(mark => mark.clear()); // 現在フォーカスされているマークもクリア
+                currentDiffMarks = [];
+                diffLines = []; // 差分リストをクリア
+                currentDiffIndex = -1; // インデックスをリセット
+                return;
+            }
+
+            // 以前のマークをクリア (diff-line および current-diff-line)
+            currentEditor.getAllMarks().forEach(mark => mark.clear());
+            modifiedEditor.getAllMarks().forEach(mark => mark.clear());
+            currentDiffMarks.forEach(mark => mark.clear()); // 現在フォーカスされているマークもクリア
+            currentDiffMarks = [];
+
+
+            // 動的計画法を使用して行の差分を計算
+            const diffMatrix = createDiffMatrix(currentLines, modifiedLines);
+            const diff = backtrackDiff(diffMatrix, currentLines, modifiedLines);
+
+            // 差分のある行のみを抽出して保存
+            diffLines = diff.filter(d => d.type !== 'same');
+            currentDiffIndex = -1; // 差分リスト更新時にインデックスをリセット
+
+            // 差分のマーク (diff-line クラス)
+            markDifferences(diff);
+
+            // 差分検出完了を視覚的に示す（オプション）
+            const statusElement = document.createElement('div');
+            statusElement.textContent = `差分検出完了 (${diffLines.length}箇所)`;
+            statusElement.style.position = 'absolute';
+            statusElement.style.bottom = '10px';
+            statusElement.style.right = '10px';
+            statusElement.style.padding = '5px 10px';
+            statusElement.style.backgroundColor = 'rgba(76, 175, 80, 0.8)'; /* グリーン */
+            statusElement.style.color = 'white';
+            statusElement.style.borderRadius = '4px';
+            statusElement.style.zIndex = '100';
+            statusElement.style.transition = 'opacity 1s';
+            statusElement.style.pointerEvents = 'none'; /* クリックできないように */
+
+
+            // 修正後エディタのコンテナに追加
+            document.getElementById('modified-code').parentElement.appendChild(statusElement);
+
+
+            // 2秒後に通知を消す
+            setTimeout(() => {
+                statusElement.style.opacity = '0';
+                setTimeout(() => {
+                    if (statusElement.parentElement) {
+                         statusElement.parentElement.removeChild(statusElement);
+                    }
+                }, 1000);
+            }, 2000);
+        }
+
+        // 動的計画法で差分行列を作成
+        function createDiffMatrix(a, b) {
+            const matrix = Array(a.length + 1).fill().map(() => Array(b.length + 1).fill(0));
+
+            // 初期化
+            for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+            for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+            // LCSを計算
+            for (let i = 1; i <= a.length; i++) {
+                for (let j = 1; j <= b.length; j++) {
+                    if (a[i - 1] === b[j - 1]) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(
+                            matrix[i - 1][j] + 1,  // 削除
+                            matrix[i][j - 1] + 1,  // 挿入
+                            matrix[i - 1][j - 1] + 1  // 置換
+                        );
+                    }
+                }
+            }
+
+            return matrix;
+        }
+
+        // 差分をバックトラックする関数
+        function backtrackDiff(matrix, a, b) {
+            const diff = [];
+            let i = a.length;
+            let j = b.length;
+
+            while (i > 0 || j > 0) {
+                if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+                    diff.unshift({ type: 'same', lineA: i - 1, lineB: j - 1 });
+                    i--;
+                    j--;
+                } else if (j > 0 && (i === 0 || matrix[i][j - 1] <= matrix[i - 1][j])) {
+                    diff.unshift({ type: 'add', lineB: j - 1 });
+                    j--;
+                } else if (i > 0) {
+                    diff.unshift({ type: 'remove', lineA: i - 1 });
+                    i--;
+                }
+            }
+
+            return diff;
+        }
+
+        // 差分をマークする関数 (diff-line クラスを適用)
+        function markDifferences(diff) {
+            // 以前の diff-line マークをクリア
+            currentEditor.getAllMarks().filter(mark => mark.className === 'diff-line').forEach(mark => mark.clear());
+            modifiedEditor.getAllMarks().filter(mark => mark.className === 'diff-line').forEach(mark => mark.clear());
+
+
+            // 差分に基づいて diff-line マークを適用
+            diff.forEach(d => {
+                if (d.type === 'remove' || d.type === 'replace') {
+                    currentEditor.markText(
+                        { line: d.lineA, ch: 0 },
+                        { line: d.lineA, ch: currentEditor.getLine(d.lineA).length },
+                        { className: 'diff-line' }
+                    );
+                }
+
+                if (d.type === 'add' || d.type === 'replace') {
+                    modifiedEditor.markText(
+                        { line: d.lineB, ch: 0 },
+                        { line: d.lineB, ch: modifiedEditor.getLine(d.lineB).length },
+                        { className: 'diff-line' }
+                    );
+                }
+            });
+        }
+
+        // 次の相違行に移動する関数
+        function findNextDifference() {
+            if (diffLines.length === 0) {
+                alert('差分が見つかりませんでした。');
+                return;
+            }
+
+            // 以前にフォーカスされていたマークをクリア
+            currentDiffMarks.forEach(mark => mark.clear());
+            currentDiffMarks = [];
+
+            // 次のインデックスを計算
+            currentDiffIndex = (currentDiffIndex + 1) % (diffLines.length + 1); // +1 は最初の行に戻るため
+
+            if (currentDiffIndex === diffLines.length) {
+                // 最後の差分を過ぎたら最初の行に戻る
+                currentEditor.setCursor({ line: 0, ch: 0 });
+                currentEditor.scrollIntoView({ line: 0, ch: 0 }, 50); // パディングを調整
+                modifiedEditor.setCursor({ line: 0, ch: 0 });
+                modifiedEditor.scrollIntoView({ line: 0, ch: 0 }, 50); // パディングを調整
+                alert('最初の行に戻りました。');
+                currentDiffIndex = -1; // 次回押下時に最初の差分から始まるようにリセット
+                return;
+            }
+
+            const diff = diffLines[currentDiffIndex];
+
+            // 対応する行にスクロール＆カーソル移動し、current-diff-line クラスでマーク
+            if (diff.type === 'remove' || diff.type === 'replace') {
+                const lineA = diff.lineA;
+                currentEditor.setCursor({ line: lineA, ch: 0 });
+                currentEditor.scrollIntoView({ line: lineA, ch: 0 }, 50); // パディングを調整
+                const markA = currentEditor.markText(
+                    { line: lineA, ch: 0 },
+                    { line: lineA, ch: currentEditor.getLine(lineA).length },
+                    { className: 'current-diff-line' }
+                );
+                currentDiffMarks.push(markA);
+            } else {
+                // 挿入行の場合は、現在のコードには対応する行がないため、現在のエディタはスクロールしない
+            }
+
+            if (diff.type === 'add' || diff.type === 'replace') {
+                const lineB = diff.lineB;
+                modifiedEditor.setCursor({ line: lineB, ch: 0 });
+                modifiedEditor.scrollIntoView({ line: lineB, ch: 0 }, 50); // パディングを調整
+                 const markB = modifiedEditor.markText(
+                    { line: lineB, ch: 0 },
+                    { line: lineB, ch: modifiedEditor.getLine(lineB).length },
+                    { className: 'current-diff-line' }
+                );
+                currentDiffMarks.push(markB);
+            } else {
+                 // 削除行の場合は、修正後のコードには対応する行がないため、修正後エディtaはスクロールしない
+            }
+        }
+
+
+        // 修正を適用する関数
+        function applyModification() {
+            const modifiedCode = modifiedEditor.getValue();
+            if (!modifiedCode) {
+                alert('修正後のコードが空です');
+                return;
+            }
+
+            // 現在のコードをバックアップ
+            const timestamp = new Date().toISOString();
+            const version = {
+                timestamp: timestamp,
+                code: currentEditor.getValue()
+            };
+
+            versions.push(version);
+            updateVersionSelect();
+            saveVersionsToStorage();
+
+            // バックアップファイルとして保存（ダウンロード）
+            // downloadBackup(version); // 適用時に自動ダウンロードはしない
+
+            // 修正後のコードを現在のコードに適用
+            currentEditor.setValue(modifiedCode);
+
+            // 修正適用後、差分を再計算・ハイライト
+            highlightDifferences();
+
+            alert('修正を適用しました。元のコードはBACKUPされました。');
+        }
+
+        // 修正後コードをファイルとして保存する関数
+        function saveModifiedCode() {
+            const modifiedCode = modifiedEditor.getValue();
+            if (!modifiedCode) {
+                alert('修正後のコードが空です');
+                return;
+            }
+
+            // ファイル名の生成 (例: modified_code_2023-10-27T10-30-00.html)
+            const filename = `modified_code_${new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)}.html`;
+
+            // ファイル内容の作成
+            const fileContent = modifiedCode;
+
+            // Blobオブジェクトの作成
+            const blob = new Blob([fileContent], { type: 'text/html' }); // HTMLとして保存
+
+            // ダウンロードリンクの作成
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+
+            // リンクをクリックしてダウンロード
+            document.body.appendChild(a);
+            a.click();
+
+            // クリーンアップ
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        }
+
+
+        // バックアップをファイルとしてダウンロードする関数
+        function downloadBackup(version) {
+            const date = new Date(version.timestamp);
+            const formattedDate = date.toISOString().replace(/[:.]/g, '-').substring(0, 19);
+            const filename = `backup-${formattedDate}.js`; // JSファイルとして保存
+
+            // ファイル内容の作成
+            const fileContent = version.code;
+
+            // Blobオブジェクトの作成
+            const blob = new Blob([fileContent], { type: 'text/javascript' });
+
+            // ダウンロードリンクの作成
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+
+            // リンクをクリックしてダウンロード
+            document.body.appendChild(a);
+            a.click();
+
+            // クリーンアップ
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        }
+
+        // バージョン選択を更新する関数
+        function updateVersionSelect() {
+            const select = document.getElementById('version-select');
+
+            // 現在のオプションをクリア
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+
+            // バージョン履歴からオプションを追加 (新しいものが上に来るように逆順)
+            versions.slice().reverse().forEach((version, index) => {
+                const date = new Date(version.timestamp);
+                // 元のインデックスを計算 (逆順なので)
+                const originalIndex = versions.length - 1 - index;
+                const optionText = `${date.toLocaleString()} - Ver. ${originalIndex + 1}`;
+                const option = new Option(optionText, originalIndex.toString());
+                select.add(option);
+            });
+        }
+
+        // バージョンを読み込む関数
+        function loadVersion(event) {
+            const versionIndex = event.target.value;
+            if (versionIndex === "") { // "-- BACKUP選択 --" が選ばれた場合
+                 modifiedEditor.setValue(""); // 修正後エディタをクリア
+                 highlightDifferences(); // 差分表示もクリア
+                 return;
+            }
+
+            const version = versions[parseInt(versionIndex)];
+            modifiedEditor.setValue(version.code);
+
+            // 差分をハイライト
+            highlightDifferences();
+        }
+
+        // バージョン履歴をローカルストレージに保存
+        function saveVersionsToStorage() {
+            localStorage.setItem('code-versions', JSON.stringify(versions));
+        }
+
+        // バージョン履歴をローカルストレージから読み込む
+        function loadVersionsFromStorage() {
+            const saved = localStorage.getItem('code-versions');
+            if (saved) {
+                versions = JSON.parse(saved);
+                updateVersionSelect();
+            }
+        }
+
+        // チャットメッセージをDOMに追加
+        function addChatMessage(message) {
+            // DOMに追加
+            renderChatMessage(message);
+
+            // ローカルストレージの履歴に追加
+            const chatHistory = JSON.parse(localStorage.getItem('chat-history') || '[]');
+            chatHistory.push(message);
+            localStorage.setItem('chat-history', JSON.stringify(chatHistory));
+        }
+
+        // チャットメッセージをレンダリング
+        function renderChatMessage(message) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+
+            if (message.type === 'user') {
+                messageDiv.className = 'chat-message user-message';
+
+                const header = document.createElement('div');
+                header.className = 'message-header';
+
+                const timestamp = new Date(message.timestamp);
+
+                header.innerHTML = `
+                    <strong>ユーザー</strong>
+                    <span class="message-time">${timestamp.toLocaleString()}</span>
+                `;
+                messageDiv.appendChild(header);
+
+                const content = document.createElement('div');
+                content.className = 'message-content';
+                content.textContent = `プロンプト: ${message.prompt}`;
+                messageDiv.appendChild(content);
+
+                if (message.context) {
+                    const contextContent = document.createElement('div');
+                    contextContent.className = 'message-content context';
+                    contextContent.textContent = `コンテキスト: ${message.context}`;
+                    messageDiv.appendChild(contextContent);
+                }
+
+                // コードプレビューは省略または短縮表示
+                const codePreview = document.createElement('div');
+                codePreview.className = 'message-content code-preview';
+                const codeLines = message.code.split('\n');
+                const previewText = codeLines.length > 5 ? codeLines.slice(0, 5).join('\n') + '\n...' : message.code;
+                codePreview.textContent = `コード (プレビュー):\n${previewText}`;
+                codePreview.style.fontSize = '0.8em';
+                codePreview.style.color = '#555';
+                codePreview.style.marginTop = '8px';
+                messageDiv.appendChild(codePreview);
+
+
+            } else if (message.type === 'ai') {
+                messageDiv.className = 'chat-message ai-message';
+
+                const header = document.createElement('div');
+                header.className = 'message-header';
+
+                const timestamp = new Date(message.timestamp);
+
+                header.innerHTML = `
+                    <strong>AI</strong>
+                    <span class="message-time">${timestamp.toLocaleString()}</span>
+                `;
+                messageDiv.appendChild(header);
+
+                const content = document.createElement('div');
+                content.className = 'message-content';
+                // AI応答全体を表示
+                content.textContent = message.content;
+                messageDiv.appendChild(content);
+
+                const actions = document.createElement('div');
+                actions.className = 'message-actions';
+
+                const reuseButton = document.createElement('button');
+                reuseButton.className = 'reuse-prompt';
+                reuseButton.textContent = 'このプロンプトを再利用';
+                reuseButton.addEventListener('click', () => {
+                    // 直前のユーザーメッセージを探す
+                    const chatHistory = JSON.parse(localStorage.getItem('chat-history') || '[]');
+                    const index = chatHistory.findIndex(msg =>
+                        msg.type === 'ai' && msg.timestamp === message.timestamp);
+
+                    if (index > 0 && chatHistory[index-1].type === 'user') {
+                        const userMessage = chatHistory[index-1];
+                        document.getElementById('prompt-input').value = userMessage.prompt;
+                        document.getElementById('context-input').value = userMessage.context || '';
+                    }
+                });
+
+                actions.appendChild(reuseButton);
+
+                // 修正後コードを修正後エディタに読み込むボタンを追加
+                if (message.modifiedCode) {
+                     const loadModifiedButton = document.createElement('button');
+                     loadModifiedButton.className = 'reuse-prompt'; // 同じスタイルを再利用
+                     loadModifiedButton.textContent = '修正後コードを読み込み';
+                     loadModifiedButton.addEventListener('click', () => {
+                         modifiedEditor.setValue(message.modifiedCode);
+                         highlightDifferences(); // 読み込み後に差分をハイライト
+                     });
+                     actions.appendChild(loadModifiedButton);
+                }
+
+
+                messageDiv.appendChild(actions);
+            }
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // チャット履歴をローカルストレージから読み込む
+        function loadChatHistory() {
+            const chatHistory = JSON.parse(localStorage.getItem('chat-history') || '[]');
+            const chatMessages = document.getElementById('chat-messages');
+
+            // まず既存のメッセージをクリア
+            chatMessages.innerHTML = '';
+
+            // 履歴を追加
+            chatHistory.forEach(message => {
+                renderChatMessage(message);
+            });
+
+            // プロンプト履歴の更新
+            updatePromptHistorySelect();
+        }
+
+        // チャット履歴をローカルストレージに保存
+        function saveChatHistory() {
+            // ここでは addChatMessage 内で既に保存されているので何もしない
+        }
+
+        // プロンプト履歴の選択肢を更新
+        function updatePromptHistorySelect() {
+            const select = document.getElementById('prompt-history-select');
+            const chatHistory = JSON.parse(localStorage.getItem('chat-history') || '[]');
+
+            // 現在のオプションをクリア（最初のオプションは残す）
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+
+            // ユーザーメッセージを抽出してオプションに追加 (新しいものが上に来るように逆順)
+            const userMessages = chatHistory.filter(msg => msg.type === 'user').slice().reverse();
+
+            userMessages.forEach((message, index) => {
+                const promptPreview = message.prompt.length > 30
+                    ? message.prompt.substring(0, 30) + '...'
+                    : message.prompt;
+
+                const date = new Date(message.timestamp);
+                const optionText = `${date.toLocaleString()} - ${promptPreview}`;
+                // 元のチャット履歴配列でのインデックスを値として保持
+                const originalIndex = chatHistory.findIndex(msg => msg.timestamp === message.timestamp && msg.type === 'user');
+                const option = new Option(optionText, originalIndex.toString());
+                select.add(option);
+            });
+
+            // イベントリスナーの設定
+            select.onchange = function(event) {
+                const selectedIndex = event.target.value;
+                if (!selectedIndex) return;
+
+                const chatHistory = JSON.parse(localStorage.getItem('chat-history') || '[]');
+                const selectedMessage = chatHistory[parseInt(selectedIndex)]; // 元のインデックスで取得
+
+                document.getElementById('prompt-input').value = selectedMessage.prompt;
+                document.getElementById('context-input').value = selectedMessage.context || '';
+
+                // 選択後、選択ボックスをリセット
+                this.selectedIndex = 0;
+            };
+        }
+
+        // チャット履歴をクリア
+        function clearChatHistory() {
+            if (!confirm('チャット履歴をクリアしてもよろしいですか？この操作は取り消せません。')) {
+                return;
+            }
+
+            localStorage.removeItem('chat-history');
+            document.getElementById('chat-messages').innerHTML = '';
+
+            // プロンプト履歴の選択肢をクリア
+            const select = document.getElementById('prompt-history-select');
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+        }
+
+        // バックアップ管理ダイアログを表示
+        function showBackupManager() {
+            // 既存のダイアログがあれば削除
+            const existingDialog = document.querySelector('.backup-dialog');
+            if (existingDialog) {
+                document.body.removeChild(existingDialog);
+                const backdrop = document.querySelector('.dialog-backdrop');
+                if (backdrop) document.body.removeChild(backdrop);
+                return;
+            }
+
+            // 背景オーバーレイ作成
+            const backdrop = document.createElement('div');
+            backdrop.className = 'dialog-backdrop';
+            document.body.appendChild(backdrop);
+
+            // ダイアログ作成
+            const dialog = document.createElement('div');
+            dialog.className = 'backup-dialog';
+
+            // バックアップリストのHTMLを生成 (新しいものが上に来るように逆順)
+            const backupListHtml = versions.slice().reverse().map((version, index) => {
+                const date = new Date(version.timestamp);
+                // 元のインデックスを計算 (逆順なので)
+                const originalIndex = versions.length - 1 - index;
+                return `
+                    <li class="backup-item">
+                        <span>${date.toLocaleString()} - Ver. ${originalIndex + 1}</span>
+                        <div class="backup-item-buttons">
+                            <button class="load-backup button-primary" data-index="${originalIndex}">修正後SCに読み込み</button>
+                            <button class="download-backup" data-index="${originalIndex}">ダウンロード</button>
+                            <button class="delete-backup button-danger" data-index="${originalIndex}">削除</button>
+                        </div>
+                    </li>
+                `;
+            }).join('');
+
+
+            dialog.innerHTML = `
+                <h3>BACKUP管理</h3>
+                <div>
+                    <button id="export-all-backups">すべてのBACKUPをエクスポート (.json)</button>
+                    <button id="import-backups">BACKUPをインポート (.json)</button>
+                    <input type="file" id="import-file" style="display: none;" accept=".json">
+                </div>
+                <h4>BACKUP一覧</h4>
+                <ul class="backup-list">
+                    ${versions.length > 0 ? backupListHtml : '<li>BACKUPファイルはありません</li>'}
+                </ul>
+                <button id="close-dialog">閉じる</button>
+            `;
+            document.body.appendChild(dialog);
+
+            // イベントリスナー設定
+            dialog.querySelector('#close-dialog').addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                document.body.removeChild(backdrop);
+            });
+
+            backdrop.addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                document.body.removeChild(backdrop);
+            });
+
+            // すべてのバックアップをエクスポート
+            dialog.querySelector('#export-all-backups').addEventListener('click', () => {
+                const backupData = JSON.stringify(versions);
+                const blob = new Blob([backupData], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `all-backups-${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+            });
+
+            // バックアップをインポート
+            const importBtn = dialog.querySelector('#import-backups');
+            const importFile = dialog.querySelector('#import-file');
+
+            importBtn.addEventListener('click', () => {
+                importFile.click();
+            });
+
+            importFile.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const importedVersions = JSON.parse(e.target.result);
+                            if (Array.isArray(importedVersions)) {
+                                const confirmed = confirm(`${importedVersions.length}個のBACKUPをインポートしますか？`);
+                                if (confirmed) {
+                                    // 重複を避けるため、timestampでフィルタリングするか検討
+                                    // 今回はシンプルに結合
+                                    versions = [...versions, ...importedVersions];
+                                    // timestampでソートし直す（古い順）
+                                    versions.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                                    saveVersionsToStorage();
+                                    updateVersionSelect();
+                                    // ダイアログを更新
+                                    document.body.removeChild(dialog);
+                                    document.body.removeChild(backdrop);
+                                    showBackupManager(); // 更新されたリストでダイアログを再表示
+                                }
+                            } else {
+                                alert('有効なBACKUPファイルではありません');
+                            }
+                        } catch (err) {
+                            alert('ファイルの読み込みに失敗しました: ' + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            });
+
+            // 個別のバックアップ操作
+            dialog.querySelectorAll('.load-backup').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const index = parseInt(btn.getAttribute('data-index'));
+                    modifiedEditor.setValue(versions[index].code);
+                    highlightDifferences(); // 読み込み後に差分をハイライト
+                    document.body.removeChild(dialog);
+                    document.body.removeChild(backdrop);
+                });
+            });
+
+            dialog.querySelectorAll('.download-backup').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const index = parseInt(btn.getAttribute('data-index'));
+                    downloadBackup(versions[index]);
+                });
+            });
+
+            dialog.querySelectorAll('.delete-backup').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const index = parseInt(btn.getAttribute('data-index'));
+                    const confirmed = confirm('このBACKUPを削除しますか？');
+                    if (confirmed) {
+                        versions.splice(index, 1);
+                        saveVersionsToStorage();
+                        updateVersionSelect();
+                        // ダイアログを更新
+                        document.body.removeChild(dialog);
+                        document.body.removeChild(backdrop);
+                        showBackupManager(); // 更新されたリストでダイアログを再表示
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
+```
